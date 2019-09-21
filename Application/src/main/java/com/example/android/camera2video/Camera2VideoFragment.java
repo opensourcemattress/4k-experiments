@@ -26,6 +26,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
@@ -37,6 +38,8 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
+import android.media.ImageReader;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Handler;
@@ -111,6 +114,8 @@ public class Camera2VideoFragment extends Fragment
     private static int N_CAMERAS = 3;
     private final int COLOR_ID = 0;
     private final int MONO_ID = 2;
+
+    private ImageReader mImageReader;
 
     private CameraDevice[] mCameraDevices = new CameraDevice[N_CAMERAS];
 
@@ -253,7 +258,7 @@ public class Camera2VideoFragment extends Fragment
             }
             else
             {
-//                startPreview(id);
+                startPreview(id);
                 mCameraOpenCloseLockMono.release();
             }
         }
@@ -367,6 +372,17 @@ public class Camera2VideoFragment extends Fragment
         super.onResume();
         startBackgroundThread(COLOR_ID);
         startBackgroundThread(MONO_ID);
+
+        mImageReader = ImageReader.newInstance(3840, 2160, ImageFormat.YUV_420_888, 10);
+        mImageReader.setOnImageAvailableListener(
+                new ImageReader.OnImageAvailableListener() {
+                    @Override
+                    public void onImageAvailable(ImageReader reader) {
+                        Image image = reader.acquireNextImage();
+                        image.close();
+                    }
+                }, mBackgroundHandlers[MONO_ID]);
+
         if (mTextureView.isAvailable()) {
             openCameras(mTextureView.getWidth(), mTextureView.getHeight());
         } else {
@@ -625,12 +641,11 @@ public class Camera2VideoFragment extends Fragment
                 mPreviewBuilders[id].addTarget(previewSurface);
                 outs = Collections.singletonList(previewSurface);
             }
-//            else {
-//                SurfaceTexture texture = new SurfaceTexture(1);
-//                Surface previewSurface = new Surface(texture);
-//                mPreviewBuilders[id].addTarget(previewSurface);
-//                outs = Collections.singletonList(previewSurface);
-//            }
+            else {
+                mPreviewBuilders[id].addTarget(mImageReader.getSurface());
+                outs = Collections.singletonList(mImageReader.getSurface());
+
+            }
             mCameraDevices[id].createCaptureSession(outs,
                     new CameraCaptureSession.StateCallback() {
 
@@ -674,6 +689,7 @@ public class Camera2VideoFragment extends Fragment
 
     private void setUpCaptureRequestBuilder(CaptureRequest.Builder builder) {
         builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+        builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
     }
 
     /**
@@ -719,7 +735,7 @@ public class Camera2VideoFragment extends Fragment
             mNextVideoAbsolutePaths[id] = getVideoFilePath(getActivity(), id);
         }
         mMediaRecorders[id].setOutputFile(mNextVideoAbsolutePaths[id]);
-        mMediaRecorders[id].setVideoEncodingBitRate(100000000);
+        mMediaRecorders[id].setVideoEncodingBitRate(25_000_000);
         mMediaRecorders[id].setVideoSize(3840, 2160);
 //        mediaRecorder.setCaptureRate(10);
 //        mediaRecorder.setVideoFrameRate(10);
